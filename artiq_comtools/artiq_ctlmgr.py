@@ -78,24 +78,24 @@ def main():
                                args.retry_master, args.host_filter,
                                loop=loop, ssl_config=ssl_config)
     ctlmgr.start()
-    atexit_register_coroutine(ctlmgr.stop)
+    try:
+        class CtlMgrRPC:
+            retry_now = ctlmgr.retry_now
 
-    class CtlMgrRPC:
-        retry_now = ctlmgr.retry_now
+        rpc_target = CtlMgrRPC()
+        rpc_server = Server({"ctlmgr": rpc_target}, builtin_terminate=True)
+        loop.run_until_complete(rpc_server.start(common_args.bind_address_from_args(args),
+                                                 args.port_control))
 
-    rpc_target = CtlMgrRPC()
-    rpc_server = Server({"ctlmgr": rpc_target}, builtin_terminate=True)
-    loop.run_until_complete(rpc_server.start(common_args.bind_address_from_args(args),
-                                             args.port_control))
-    atexit_register_coroutine(rpc_server.stop)
-
-    print("ARTIQ controller manager is now running.")
-    _, pending = loop.run_until_complete(asyncio.wait(
-        [loop.create_task(signal_handler.wait_terminate()),
-         loop.create_task(rpc_server.wait_terminate())],
-        return_when=asyncio.FIRST_COMPLETED))
-    for task in pending:
-        task.cancel()
+        print("ARTIQ controller manager is now running.")
+        _, pending = loop.run_until_complete(asyncio.wait(
+            [loop.create_task(signal_handler.wait_terminate()),
+             loop.create_task(rpc_server.wait_terminate())],
+            return_when=asyncio.FIRST_COMPLETED))
+        for task in pending:
+            task.cancel()
+    finally:
+        loop.run_until_complete(ctlmgr.stop())
 
 
 if __name__ == "__main__":
